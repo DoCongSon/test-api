@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  annotations:
+    # Dòng này xử lý việc định tuyến đường dẫn (nếu cần sau này)
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service # Phải khớp với tên Service bạn đã tạo ở Bước 2
+                port:
+                  number: 80 # Cổng của Service (không phải cổng 3000 của container)

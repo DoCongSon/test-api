@@ -135,3 +135,29 @@ The build artifacts are emitted to the `dist/` directory and can be deployed ind
    ```
 
 > ✅ Update `deployment.yaml` before every release to point to the correct container tag (for example `testapiacr.azurecr.io/test-api:v1`). Adjust CPU/memory requests to reflect production sizing needs. The sample commands assume a Dockerfile at the repository root; adapt them if your containerization workflow differs.
+
+### Exposing the API Externally with Ingress
+
+Once the workload is healthy, configure external access with the provided `ingress.yaml` (which targets the `api-service` on port 80):
+
+1. Ensure an ingress controller is installed in the cluster (for example the [NGINX ingress add-on](https://learn.microsoft.com/azure/aks/ingress-basic?tabs=azure-cli)). For AKS you can enable it via:
+   ```bash
+   az aks addon enable --resource-group testapi-rg --name testapi-aks --addon ingress-nginx
+   ```
+   or install the OSS NGINX controller with Helm:
+   ```bash
+   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+   helm repo update
+   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+     --namespace ingress-nginx --create-namespace
+   ```
+2. Deploy the ingress resource:
+   ```bash
+   kubectl apply -f ingress.yaml
+   kubectl get ingress api-ingress
+   ```
+3. Wait for an external IP or hostname to be provisioned (check in `kubectl get ingress` output). Once available, call the API through the ingress endpoint:
+   ```bash
+   curl http://<EXTERNAL_HOSTNAME_OR_IP>/health
+   ```
+4. To serve a custom domain, create an A record pointing to the ingress IP or configure the DNS name provided by your ingress controller. Use TLS certificates (for example via cert-manager + Let’s Encrypt) for production traffic.
