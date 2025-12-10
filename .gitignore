@@ -1,0 +1,21 @@
+# Node
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build
+coverage
+dist
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Misc
+.DS_Store
+.idea
+.vscode/*.code-snippets
+*.tsbuildinfo
