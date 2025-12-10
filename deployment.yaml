@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testapi-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: testapi-backend
+  template:
+    metadata:
+      labels:
+        app: testapi-backend
+    spec:
+      # --- PHẦN QUAN TRỌNG ---
+      imagePullSecrets:
+        - name: acr-secret
+      # -------------------------------
+      containers:
+        - name: api-server
+          image: testapi.azurecr.io/test-api:v1
+          ports:
+            - containerPort: 3000
+          resources:
+            limits:
+              memory: '256Mi'
+              cpu: '500m'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+spec:
+  type: ClusterIP
+  selector:
+    app: testapi-backend
+  ports:
+    - port: 80 # Cổng nội bộ trong Cluster
+      targetPort: 3000 # Cổng Node.js đang lắng nghe

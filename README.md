@@ -68,17 +68,70 @@ npm start
 
 The build artifacts are emitted to the `dist/` directory and can be deployed independently.
 
-## Docker
+## Deploying to Azure Web App
 
-Build and run the container image locally:
+1. Ensure you are signed in with the Azure CLI:
+   ```bash
+   az login
+   ```
+2. Create the resource group and App Service plan (Linux, Node 18 runtime):
+   ```bash
+   az group create --name testapi-rg --location eastus
+   az appservice plan create --name testapi-plan --resource-group testapi-rg --sku B1 --is-linux
+   az webapp create \
+     --name testapi-web \
+     --resource-group testapi-rg \
+     --plan testapi-plan \
+     --runtime "NODE|18-lts"
+   ```
+3. Configure environment variables expected by the API:
+   ```bash
+   az webapp config appsettings set \
+     --resource-group testapi-rg \
+     --name testapi-web \
+     --settings PORT=3000 NODE_ENV=production LOG_LEVEL=info
+   ```
+4. Build the project locally and package it for deployment (Zip Deploy keeps the node_modules installation on the server):
+   ```bash
+   npm install
+   npm run build
+   zip -r release.zip package.json package-lock.json dist
+   az webapp deploy --resource-group testapi-rg --name testapi-web --src-path release.zip --type zip
+   ```
+5. Verify that the app responds:
+   ```bash
+   az webapp browse --resource-group testapi-rg --name testapi-web
+   ```
 
-```bash
-docker build -t test-api:latest .
-docker run --rm -p 3000:3000 test-api:latest
-```
+> ℹ️ App Service automatically runs `npm install` in production mode. The `npm start` script launches `dist/server.js`, so no custom startup command is required.
 
-Override runtime configuration using environment variables, for example:
+## Deploying to Azure Kubernetes Service (AKS)
 
-```bash
-docker run --rm -p 4000:3000 -e PORT=3000 -e LOG_LEVEL=info test-api:latest
-```
+1. Make sure you have an Azure Container Registry (ACR) and AKS cluster, and both are in the same resource group (sample names are used below):
+   ```bash
+   az acr create --resource-group testapi-rg --name testapiacr --sku Basic
+   az aks create --resource-group testapi-rg --name testapi-aks --attach-acr testapiacr --node-count 1 --generate-ssh-keys
+   ```
+2. Build and push the container image referenced by `deployment.yaml` (update the image name/tag to match your registry):
+   ```bash
+   az acr login --name testapiacr
+   docker build -t testapiacr.azurecr.io/test-api:v1 .
+   docker push testapiacr.azurecr.io/test-api:v1
+   ```
+3. Get AKS credentials and apply the Kubernetes manifests:
+   ```bash
+   az aks get-credentials --resource-group testapi-rg --name testapi-aks
+   kubectl apply -f deployment.yaml
+   ```
+4. Monitor rollout and service status:
+   ```bash
+   kubectl get pods
+   kubectl get svc api-service
+   ```
+5. For local verification, port-forward the ClusterIP service and call the API:
+   ```bash
+   kubectl port-forward svc/api-service 8080:80
+   curl http://localhost:8080/health
+   ```
+
+> ✅ Update `deployment.yaml` before every release to point to the correct container tag (for example `testapiacr.azurecr.io/test-api:v1`). Adjust CPU/memory requests to reflect production sizing needs. The sample commands assume a Dockerfile at the repository root; adapt them if your containerization workflow differs.
