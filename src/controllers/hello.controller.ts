@@ -10,3 +10,13 @@ export const helloController = (req: Request, res: Response): void => {
 
   res.status(200).json({ message: `Hello, ${target}!` });
 };
+
+export const helloAuthenticatedController = (req: Request, res: Response): void => {
+  const who =
+    req.authUser?.name ?? req.authUser?.email ?? req.authUser?.uid ?? 'authenticated user';
+
+  res.status(200).json({
+    message: `Hello, ${who}!`,
+    uid: req.authUser?.uid,
+  });
+};

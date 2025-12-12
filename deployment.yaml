@@ -12,19 +12,54 @@ spec:
       labels:
         app: testapi-backend
     spec:
-      # --- PHẦN QUAN TRỌNG ---
       imagePullSecrets:
         - name: acr-secret
-      # -------------------------------
       containers:
         - name: api-server
-          image: testapi.azurecr.io/test-api:v1
+          image: testapi.azurecr.io/test-api:v4
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: APP_NAME
+              value: test-api
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: '3000'
+            - name: LOG_LEVEL
+              value: info
+            - name: SESSION_MAX_AGE_DAYS
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: SESSION_MAX_AGE_DAYS
+            - name: FIREBASE_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: FIREBASE_PROJECT_ID
+            - name: FIREBASE_CLIENT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: FIREBASE_CLIENT_EMAIL
+            - name: FIREBASE_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: FIREBASE_PRIVATE_KEY
           resources:
             limits:
               memory: '256Mi'
-              cpu: '500m'
+              # Sửa từ 500m xuống 250m hoặc 100m
+              cpu: '100m'
+            requests:
+              # Thêm dòng này (hoặc sửa nếu có) để K8s dễ xếp lịch hơn
+              cpu: '50m'
+              memory: '128Mi'
 ---
 apiVersion: v1
 kind: Service

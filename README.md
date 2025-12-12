@@ -34,6 +34,10 @@ The API listens on the host and port configured in your environment variables (d
 
 - `GET /health` — returns service status and uptime metadata.
 - `GET /hello?name=YourName` — returns a greeting, defaulting to `world` if `name` is omitted.
+- `GET /hello/secure` — requires a valid Firebase ID token or session cookie and greets the authenticated user.
+- `POST /auth/session` — exchanges a Firebase ID token for a long-lived session cookie and returns the user profile.
+- `GET /auth/me` — returns the current authenticated user (ID or session token required).
+- `DELETE /auth/session` — revokes refresh tokens for the authenticated user and clears the session cookie.
 
 ## Logging
 
@@ -58,6 +62,26 @@ Tests are located under `tests/` and leverage Jest with Supertest for HTTP asser
 ```bash
 npm test
 ```
+
+## Authentication Setup
+
+The API relies on the Firebase Admin SDK for identity verification.
+
+1. Create a service account in the Firebase console and generate a JSON key.
+2. Populate the following environment variables (see `.env.example`):
+   - `FIREBASE_PROJECT_ID`
+   - `FIREBASE_CLIENT_EMAIL`
+   - `FIREBASE_PRIVATE_KEY` (escape newlines as `\n` when storing in `.env` files)
+   - `SESSION_MAX_AGE_DAYS` (optional, defaults to 7 days)
+3. Provide clients with Firebase ID tokens (via Firebase Authentication SDK). The backend accepts tokens in the `Authorization: Bearer <token>` header or via the `session` cookie.
+4. To create HTTP-only sessions, call `POST /auth/session` with `{ "idToken": "<firebase-id-token>", "remember": true }`. The response contains the session cookie and user payload.
+5. Attach the returned cookie (or the original ID token) to protected requests. Example:
+   ```bash
+   curl -H "Authorization: Bearer <ID_TOKEN>" http://localhost:3000/hello/secure
+   ```
+6. Revoke sessions with `DELETE /auth/session` to invalidate refresh tokens across devices.
+
+For Kubernetes or container deployments, set these variables as secrets. Session cookies default to `SameSite=Lax`, `HttpOnly`, and `Secure` (when `NODE_ENV !== development`).
 
 ## Building for Production
 
@@ -161,3 +185,90 @@ Once the workload is healthy, configure external access with the provided `ingre
    curl http://<EXTERNAL_HOSTNAME_OR_IP>/health
    ```
 4. To serve a custom domain, create an A record pointing to the ingress IP or configure the DNS name provided by your ingress controller. Use TLS certificates (for example via cert-manager + Let’s Encrypt) for production traffic.
+
+## Custom Domains & TLS Certificates
+
+### Azure Web App
+
+1. Point your domain to the Web App: create a DNS CNAME record for the subdomain pointing to `<app-name>.azurewebsites.net` or an A record if you have a static IP via Azure Front Door/Application Gateway.
+2. Bind the hostname:
+   ```bash
+   az webapp config hostnames add \
+      --resource-group testapi-rg \
+      --name testapi-web \
+      --hostname api.example.com
+   ```
+3. Request an Azure-managed certificate (free, single-domain) once DNS is validated:
+   ```bash
+   az webapp config ssl create \
+      --resource-group testapi-rg \
+      --name testapi-web \
+      --hostname api.example.com
+   az webapp config ssl bind \
+      --resource-group testapi-rg \
+      --name testapi-web \
+      --certificate-thumbprint <THUMBPRINT> \
+      --ssl-type SNI
+   ```
+   > 🔐 Managed certificates renew automatically; if you supply your own certificate (`.pfx`), upload it with `az webapp config ssl upload` and track expiry manually.
+
+### AKS Ingress (NGINX + cert-manager)
+
+1. After ingress is provisioned, note its public IP/hostname:
+   ```bash
+   kubectl get ingress api-ingress
+   ```
+   Create an A record for `api.example.com` pointing to that IP (or CNAME to the hostname).
+2. Install cert-manager (once per cluster):
+   ```bash
+   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.15.1/cert-manager.yaml
+   ```
+3. Define a ClusterIssuer for Let’s Encrypt (replace contact email):
+   ```yaml
+   apiVersion: cert-manager.io/v1
+   kind: ClusterIssuer
+   metadata:
+     name: letsencrypt-prod
+   spec:
+     acme:
+       email: ops@example.com
+       server: https://acme-v02.api.letsencrypt.org/directory
+       privateKeySecretRef:
+         name: letsencrypt-prod
+       solvers:
+         - http01:
+             ingress:
+               class: nginx
+   ```
+   Apply it with `kubectl apply -f clusterissuer.yaml`.
+4. Request a certificate for your domain (assumes ingress uses namespace `default`):
+   ```yaml
+   apiVersion: cert-manager.io/v1
+   kind: Certificate
+   metadata:
+     name: api-example-com
+     namespace: default
+   spec:
+     secretName: api-example-com-tls
+     dnsNames:
+       - api.example.com
+     issuerRef:
+       name: letsencrypt-prod
+       kind: ClusterIssuer
+   ```
+   Apply with `kubectl apply -f certificate.yaml`.
+5. Update `ingress.yaml` to reference the generated secret:
+   ```yaml
+   spec:
+      tls:
+         - hosts:
+               - api.example.com
+            secretName: api-example-com-tls
+   ```
+6. Monitor certificate status:
+   ```bash
+   kubectl describe certificate api-example-com
+   kubectl get secret api-example-com-tls
+   ```
+
+> ✅ cert-manager renews certificates automatically. Ensure DNS remains pointed at the ingress IP and that ports 80/443 are open.
