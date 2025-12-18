@@ -41,7 +41,35 @@ The API listens on the host and port configured in your environment variables (d
 
 ## Logging
 
-Structured logging is provided by [Pino](https://github.com/pinojs/pino). Pretty printing is enabled automatically in non-production environments.
+Structured logging is provided by [Pino](https://github.com/pinojs/pino). Pretty printing is enabled automatically in non-production environments. Authentication flows enrich log lines with `uid` (and IP on failures) so traces in Application Insights surface the acting user via `customDimensions.uid`.
+
+## Monitoring with Azure Application Insights
+
+The API emits telemetry to Azure Application Insights when `APPLICATIONINSIGHTS_CONNECTION_STRING` is configured. Use the Azure Portal to inspect health, logs, and performance:
+
+- **Open the resource** — In the Azure Portal search for "Application Insights" and select the instance linked to your environment.
+- **Overview blade** — Check request rate, response times, and failure count summaries. Select any chart to drill into the underlying data.
+- **Live Metrics** — Use the Live Metrics Stream for near-real-time visibility into requests, dependencies, and server health. Useful when rolling out new releases.
+- **Log Analytics** — Open the Logs tab to run Kusto queries. For example, recent server errors:
+  ```kusto
+  requests
+  | where timestamp > ago(1h)
+  | where success == false
+  | project timestamp, name, resultCode, operation_Id, cloud_RoleName
+  ```
+  Switch to the `traces` table to explore structured logs emitted via the Pino integration.
+- **Business telemetry** — Custom events capture authentication outcomes:
+  ```kusto
+  customEvents
+  | where name in ('UserLoginSuccess', 'UserLoginFailed', 'UserLogout')
+  | project timestamp, name, customDimensions.uid, customDimensions.email, customDimensions.provider, customDimensions.ip, customDimensions.errorMsg
+  ```
+  Filter by `customDimensions.uid` to follow a specific user journey or join against `traces` on the same `operation_Id` for full context.
+- **Transaction search** — The Failures blade surfaces exceptions and dependency errors. Drill into a failed request to see correlated traces, dependencies, and custom logs.
+- **Dashboards & Workbooks** — Pin tiles from the Metrics or Logs views to dashboards for ongoing monitoring. Workbooks offer richer visualizations and sharing with the team.
+- **Alerts** — Create metric alerts (for example high failure rate or CPU usage) or log alerts (for specific error patterns) to receive email/Teams notifications when thresholds are breached.
+
+> ℹ️ Ensure your deployment (App Service, AKS, or other host) sets `APPLICATIONINSIGHTS_CONNECTION_STRING` via environment variables or secrets. Re-deploy if you rotate the connection string.
 
 ## Project Structure
 

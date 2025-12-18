@@ -1,3 +1,5 @@
+import './instrumentation';
+
 import compression from 'compression';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';

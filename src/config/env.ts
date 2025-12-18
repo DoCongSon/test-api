@@ -25,6 +25,7 @@ export interface AppConfig {
   readonly port: number;
   readonly logLevel: string;
   readonly sessionMaxAgeMs: number;
+  readonly appInsightsConnectionString?: string;
 }
 
 export const appConfig: AppConfig = {
@@ -34,4 +35,5 @@ export const appConfig: AppConfig = {
   port: parsePort(process.env.PORT),
   logLevel: process.env.LOG_LEVEL ?? 'debug',
   sessionMaxAgeMs: parsePositiveInt(process.env.SESSION_MAX_AGE_DAYS, 7) * 24 * 60 * 60 * 1000,
+  appInsightsConnectionString: process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
 };
